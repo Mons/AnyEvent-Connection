@@ -11,7 +11,8 @@ use AnyEvent::Socket;
 use Carp;
 
 use Scalar::Util qw(weaken);
-BEGIN { eval { require Sub::Name; Sub::Name->import(); 1 } or *subname = sub { $_[1] } }
+BEGIN { eval { require Sub::Name; Sub::Name->import(); 1 } or *subname = sub { $_[1] }; }
+BEGIN { eval { require Devel::FindRef; *findref = \&Devel::FindRef::track;   1 } or *findref  = sub { "No Devel::FindRef installed\n" }; }
 use AnyEvent::Connection::Raw;
 use AnyEvent::cb;
 use strict;
@@ -84,6 +85,7 @@ sub new {
 
 sub init {
 	my $self = shift;
+	$self->{debug}   ||= 0;
 	$self->{connected} = 0;
 	$self->{reconnect} = 1 unless defined $self->{reconnect};
 	$self->{timeout} ||= 3;
@@ -106,11 +108,12 @@ sub connect {
 	$self->{_}{con}{cb} = subname 'connect.cb' => sb {
 		pop;
 		delete $self->{_}{con};
-			warn "$self Connected @_";
 			if (my $fh = shift) {
+				warn "Connected @_";
 				$self->{con} = AnyEvent::Connection::Raw->new(
-					fh => $fh,
+					fh      => $fh,
 					timeout => $self->{timeout},
+					debug   => $self->{debug},
 				);
 				$self->{con}->reg_cb(
 					disconnect => sb {
@@ -121,8 +124,10 @@ sub connect {
 					},
 				);
 				$self->{connected} = 1;
+				warn "Send connected event";
 				$self->event(connected => $self->{con}, @_);
 			} else {
+				warn "Not connected: $!";
 				$self->event(connfail => "$!");
 				$self->_reconnect_after();
 			}
@@ -162,11 +167,12 @@ sub say {
 }
 
 sub _reconnect_after {
-	my $self = shift;
+	weaken( my $self = shift );
 	$self->{reconnect} or return;
 	$self->{timers}{reconnect} = AnyEvent->timer(
 		after => $self->{reconnect},
 		cb => sb {
+			$self or return;
 			delete $self->{timers}{reconnect};
 			warn "Reconnecting";
 			$self->connect;
@@ -176,10 +182,10 @@ sub _reconnect_after {
 
 sub periodic_stop;
 sub periodic {
-	my $self = shift;
+	weaken( my $self = shift );
 	my $interval = shift;
 	my $cb = shift;
-	warn "Create periodic $interval";
+	#warn "Create periodic $interval";
 	$self->{timers}{int $cb} = AnyEvent->timer(
 		after => $interval,
 		interval => $interval,
@@ -188,6 +194,7 @@ sub periodic {
 				warn "Stopping periodic ".int $cb;
 				delete $self->{timers}{int $cb}; undef $cb
 			};
+			$self or return;
 			$cb->();
 		},
 	);
@@ -199,13 +206,14 @@ sub periodic {
 }
 
 sub after {
-	my $self = shift;
+	weaken( my $self = shift );
 	my $interval = shift;
 	my $cb = shift;
-	warn "Create after $interval";
+	#warn "Create after $interval";
 	$self->{timers}{int $cb} = AnyEvent->timer(
 		after => $interval,
 		cb => sb {
+			$self or return;
 			delete $self->{timers}{int $cb};
 			$cb->();
 			undef $cb;
@@ -237,14 +245,20 @@ sub disconnect {
 	return;
 }
 
-sub DESTROY {
-	my $self = shift;
-	warn "Destroying client";
-	$self->disconnect;
-	%$self = ();
-	return;
+sub AnyEvent::Connection::destroyed::AUTOLOAD {}
+
+sub destroy {
+	my ($self) = @_;
+	$self->DESTROY;
+	bless $self, "AnyEvent::Connection::destroyed";
 }
 
+sub DESTROY {
+	my $self = shift;
+	warn "(".int($self).") Destroying client";
+	$self->disconnect;
+	%$self = ();
+}
 
 =head1 AUTHOR
 

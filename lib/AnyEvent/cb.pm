@@ -22,6 +22,8 @@ BEGIN {
 		eval { require Devel::FindRef; *findref = \&Devel::FindRef::track;   1 } or *findref  = sub { "No Devel::FindRef installed\n" };
 		*sb = sub (&) {
 			$DEF{int $_[0]} = [ join(' ',(caller())[1,2]), $_[0] ];weaken($DEF{int $_[0]}[1]);
+			#local $_ = int $_[0];
+			#warn "create: $_ defined $DEF{$_}[0]\n";
 			return bless shift,'__callback__';
 		};
 		*cb = sub (&;@) {
@@ -29,13 +31,16 @@ BEGIN {
 			return cb => bless( shift,'__callback__'), @_;
 		};
 		*__callback__::DESTROY = sub {
+			#local $_ = int $_[0];
+			#my $name = sub_fullname($DEF{$_}[1]);
+			#warn "destroy: $_ ".($name ? $name : 'ANON')." defined $DEF{$_}[0]\n";#.findref($DEF{$_}[1]);
 			delete($DEF{int $_[0]});
 		};
 		*COUNT = sub {
 			for (keys %DEF) {
 				$DEF{$_}[1] or next;
 				my $name = sub_fullname($DEF{$_}[1]);
-				warn "Not destroyed: $_ ".($name ? $name : 'ANON')." (".refcount($DEF{$_}[1]).") defined $DEF{$_}[0]\n".findref($DEF{$_}[1]);
+				warn "Not destroyed: $_ ".($name ? $name : 'ANON')." (".refcount($DEF{$_}[1]).") defined $DEF{$_}[0]\n";#.findref($DEF{$_}[1]);
 			}
 		};
 	} else {

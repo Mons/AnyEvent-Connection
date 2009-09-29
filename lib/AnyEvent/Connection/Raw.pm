@@ -7,44 +7,46 @@ use base 'Object::Event';
 use AnyEvent::Handle;
 use AnyEvent::cb;
 use Scalar::Util qw(weaken);
+use Carp;
 BEGIN { eval { require Sub::Name; Sub::Name->import(); 1 } or *subname = sub { $_[1] } }
+BEGIN { eval { require Devel::FindRef; *findref = \&Devel::FindRef::track;   1 } or *findref  = sub { "No Devel::FindRef installed\n" }; }
 
-our $NL = "\015\012";
-our $QRNL = qr<\015?\012>;
+sub _call_waiting {
+	my $me = shift;
+	for my $k (keys %{ $me->{waitingcb} }) {
+		if ($me->{waitingcb}{$k}) {
+			$me->{waitingcb}{$k}->(undef, @_);
+		}
+		delete $me->{waitingcb}{$k};
+	}
+}
 
 sub new {
 	my $pkg = shift;
 	my $self = $pkg->SUPER::new(@_);
-	$self->{nl} = $NL unless defined $self->{nl};
-	$self->{debug} = 1;
+	$self->{nl} = "\015\012" unless defined $self->{nl};
+	$self->{debug} = 1 unless defined $self->{debug};
+	weaken(my $me = $self);
 	$self->{cb}{eof} = subname 'conn.cb.eof' => sb {
+		$me or return;
 		local *__ANON__ = 'conn.cb.eof';
-		warn "[\U$self->{side}\E] Eof on handle";
-		delete $self->{h};
-		for my $k (keys %{ $self->{waitingcb} }) {
-			if ($self->{waitingcb}{$k}) {
-				$self->{waitingcb}{$k}->(undef, "eof from client");
-			}
-			delete $self->{waitingcb}{$k};
-		}
-		$self->event('disconnect');
+		warn "[\U$me->{side}\E] Eof on handle";
+		delete $me->{h};
+		$me->_call_waiting("EOF from handle");
+		$me->event('disconnect');
 	} ;
 	$self->{cb}{err} = subname 'conn.cb.err' => sb {
+		$me or return;
 		local *__ANON__ = 'conn.cb.err';
 		my $e = "$!";
-		if ( $self->{destroying} ) {
+		if ( $me->{destroying} ) {
 			warn "err on destroy";
 			$e = "Connection closed";
 		} else {
-			#warn "[\U$self->{side}\E] Error on handle: $e"; # TODO: uncomment
+			#warn "[\U$me->{side}\E] Error on handle: $e"; # TODO: uncomment
 		}
-		delete $self->{h};
-		for my $k (keys %{ $self->{waitingcb} }) {
-			if ($self->{waitingcb}{$k}) {
-				$self->{waitingcb}{$k}->(undef, "$e");
-			}
-			delete $self->{waitingcb}{$k};
-		}
+		delete $me->{h};
+		$me->_call_waiting($e);
 		$self->event( disconnect => "Error: $e" );
 	};
 	$self->{timeout} ||= 30;
@@ -57,24 +59,22 @@ sub new {
 	$self;
 }
 
-sub close {
+sub destroy {
+	my ($self) = @_;
+	$self->DESTROY;
+	bless $self, "AnyEvent::Connection::Raw::destroyed";
+}
+*close = \&destroy;
+sub AnyEvent::Connection::Raw::destroyed::AUTOLOAD {}
+sub DESTROY {
 	my $self = shift;
+	warn "(".int($self).") Destroying conn";
 	delete $self->{fh};
 	$self->{h} and $self->{h}->destroy;
 	delete $self->{h};
 	%$self = ();
-	$self->{destroying} = 1;
 	return;
 }
-
-sub DESTROY {
-	my $self = shift;
-	warn "(".int($self).") Destroying conn";
-	$self->close;
-	%$self = ();
-	return;
-}
-
 
 sub push_write {
 	my $self = shift;
@@ -111,28 +111,12 @@ sub say {
 }
 *reply = \&say;
 
-# Serverside feature
-sub want_command {
-	my $self = shift;
-	$self->{h} or return;
-	$self->{h}->push_read( regex => $QRNL, sb {
-		local *__ANON__ = 'conn.want_command.read';
-		shift;
-		for (@_) {
-			chomp;
-			substr($_,-1,1) = '' if substr($_, -1,1) eq "\015";
-		}
-		$self->event( command => @_ );
-		$self->want_command;
-	});
-}
-
 sub recv {
 	my ($self,$bytes,%args) = @_;
-	$args{cb}  or return $self->event( error => "no cb for command at @{[ (caller)[1,2] ]}" );
+	$args{cb}  or croak "no cb for recv at @{[ (caller)[1,2] ]}";
 	$self->{h} or return $args{cb}(undef,"Not connected");
 	warn "<+ read $bytes " if $self->{debug};
-	$self->{waitingcb}{int $args{cb}} = $args{cb};
+	weaken( $self->{waitingcb}{int $args{cb}} = $args{cb} );
 	$self->{h}->unshift_read( chunk => $bytes, sb {
 		local *__ANON__ = 'conn.recv.read';
 		# Also eat CRLF or LF from read buffer
@@ -142,6 +126,60 @@ sub recv {
 		shift; (delete $args{cb})->(@_);
 		%args = ();
 	} );
+}
+
+sub command {
+	my $self = shift;
+	my $write = shift;
+	my %args = @_;
+	$args{cb}  or croak "no cb for command at @{[ (caller)[1,2] ]}";
+	$self->{h} or return $args{cb}(undef,"Not connected"),%args = ();
+	weaken( $self->{waitingcb}{int $args{cb}} = $args{cb} );
+	
+	#my $i if 0;
+	#my $c = ++$i;
+	warn ">> $write  " if $self->{debug};
+	::measure("command begin");
+	$self->{h}->push_write("$write$self->{nl}");
+	#$self->{h}->timeout( $self->{select_timeout} );
+	warn "<? read  " if $self->{debug};
+	::measure("command written");
+	$self->{h}->push_read( regex => qr<\015?\012>, subname 'conn.command.read' => sb {
+		::measure("command got data");
+		local *__ANON__ = 'conn.command.read';
+		shift;
+		for (@_) {
+			chomp;
+			substr($_,-1,1) = '' if substr($_, -1,1) eq "\015";
+		}
+		warn "<< @_  " if $self->{debug};
+		delete $self->{waitingcb}{int $args{cb}};
+		delete($args{cb})->(@_);
+		%args = ();
+		undef $self;
+	} );
+	::measure("command end");
+	#sub {
+		#$self->{state}{handle}->timeout( 0 ) if $self->_qsize < 1;
+		#diag "<< $c. $write: $_[1] (".$self->_qsize."), timeout ".($self->{state}{handle}->timeout ? 'enabled' : 'disabled');
+		#$cb->(@_);
+	#});
+}
+
+# Serverside feature
+sub want_command {
+	my $self = shift;
+	$self->{h} or return;
+	$self->{h}->push_read( regex => qr<\015?\012>, subname 'conn.wand_command.read' => sb {
+		local *__ANON__ = 'conn.want_command.read';
+		shift;
+		for (@_) {
+			chomp;
+			substr($_,-1,1) = '' if substr($_, -1,1) eq "\015";
+		}
+		$self->event( command => @_ );
+		$self->want_command;
+	});
 }
 
 1;
