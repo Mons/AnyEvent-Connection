@@ -14,6 +14,7 @@ BEGIN { eval { require Devel::FindRef; *findref = \&Devel::FindRef::track;   1 }
 sub _call_waiting {
 	my $me = shift;
 	for my $k (keys %{ $me->{waitingcb} }) {
+		warn "call waiting $k with @_";
 		if ($me->{waitingcb}{$k}) {
 			$me->{waitingcb}{$k}->(undef, @_);
 		}
@@ -32,8 +33,8 @@ sub new {
 		local *__ANON__ = 'conn.cb.eof';
 		warn "[\U$me->{side}\E] Eof on handle";
 		delete $me->{h};
-		$me->_call_waiting("EOF from handle");
 		$me->event('disconnect');
+		$me->_call_waiting("EOF from handle");
 	} ;
 	$self->{cb}{err} = subname 'conn.cb.err' => sb {
 		$me or return;
@@ -46,8 +47,8 @@ sub new {
 			#warn "[\U$me->{side}\E] Error on handle: $e"; # TODO: uncomment
 		}
 		delete $me->{h};
-		$me->_call_waiting($e);
 		$self->event( disconnect => "Error: $e" );
+		$me->_call_waiting($e);
 	};
 	$self->{timeout} ||= 30;
 	$self->{h} = AnyEvent::Handle->new(

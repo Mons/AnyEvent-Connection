@@ -90,7 +90,7 @@ sub init {
 	$self->{reconnect} = 1 unless defined $self->{reconnect};
 	$self->{timeout} ||= 3;
 	$self->{timers}    = {};
-	warn "Init $self";
+	#warn "Init $self";
 }
 
 sub connected {
@@ -101,7 +101,7 @@ sub connected {
 sub connect {
 	my $self = shift;
 	weaken $self;
-	croak "Only client can connect" if $self->{type} and $self->{type} ne 'client';
+	croak "Only client can connect but have $self->{type}" if $self->{type} and $self->{type} ne 'client';
 	$self->{type} = 'client';
 	
 	warn "Connecting to $self->{host}:$self->{port}...";
@@ -117,17 +117,17 @@ sub connect {
 				);
 				$self->{con}->reg_cb(
 					disconnect => sb {
-						warn "Disconnected";
+						warn "Disconnected $self->{host}:$self->{port} @_";
 						$self->event( disconnect => @_ );
 						$self->disconnect;
 						$self->_reconnect_after();
 					},
 				);
 				$self->{connected} = 1;
-				warn "Send connected event";
+				#warn "Send connected event";
 				$self->event(connected => $self->{con}, @_);
 			} else {
-				warn "Not connected: $!";
+				warn "Not connected $self->{host}:$self->{port}: $!";
 				$self->event(connfail => "$!");
 				$self->_reconnect_after();
 			}
@@ -174,7 +174,7 @@ sub _reconnect_after {
 		cb => sb {
 			$self or return;
 			delete $self->{timers}{reconnect};
-			warn "Reconnecting";
+			#warn "Reconnecting";
 			$self->connect;
 		}
 	);
