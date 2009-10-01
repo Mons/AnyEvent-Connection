@@ -80,6 +80,12 @@ sub DESTROY {
 sub push_write {
 	my $self = shift;
 	$self->{h} or return;
+	for (@_) {
+		if (!ref and utf8::is_utf8($_)) {
+			$_ = $_;
+			utf8::encode $_;
+		}
+	}
 	$self->{h}->push_write(@_);
 	warn ">> @_  " if $self->{debug};
 }
@@ -106,6 +112,12 @@ sub unshift_read {
 sub say {
 	my $self = shift;
 	$self->{h} or return;
+	for (@_) {
+		if (!ref and utf8::is_utf8($_)) {
+			$_ = $_;
+			utf8::encode $_;
+		}
+	}
 	$self->{h}->push_write("@_$self->{nl}");
 	warn ">> @_  " if $self->{debug};
 	return;
@@ -132,6 +144,9 @@ sub recv {
 sub command {
 	my $self = shift;
 	my $write = shift;
+	if (utf8::is_utf8($write)) {
+		utf8::encode $write;
+	}
 	my %args = @_;
 	$args{cb}  or croak "no cb for command at @{[ (caller)[1,2] ]}";
 	$self->{h} or return $args{cb}(undef,"Not connected"),%args = ();
