@@ -26,7 +26,7 @@ sub new {
 	my $pkg = shift;
 	my $self = $pkg->SUPER::new(@_);
 	$self->{nl} = "\015\012" unless defined $self->{nl};
-	$self->{debug} = 1 unless defined $self->{debug};
+	$self->{debug} = 0 unless defined $self->{debug};
 	weaken(my $me = $self);
 	$self->{cb}{eof} = subname 'conn.cb.eof' => sb {
 		$me or return;
