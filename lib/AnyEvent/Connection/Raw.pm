@@ -28,7 +28,7 @@ sub new {
 	$self->{nl} = "\015\012" unless defined $self->{nl};
 	$self->{debug} = 0 unless defined $self->{debug};
 	weaken(my $me = $self);
-	$self->{cb}{eof} = subname 'conn.cb.eof' => sb {
+	$self->{cb}{eof} = sub {# subname 'conn.cb.eof' => sub {
 		$me or return;
 		local *__ANON__ = 'conn.cb.eof';
 		warn "[\U$me->{side}\E] Eof on handle";
@@ -36,7 +36,7 @@ sub new {
 		$me->event('disconnect');
 		$me->_call_waiting("EOF from handle");
 	} ;
-	$self->{cb}{err} = subname 'conn.cb.err' => sb {
+	$self->{cb}{err} = sub { #subname 'conn.cb.err' => sub {
 		$me or return;
 		local *__ANON__ = 'conn.cb.err';
 		my $e = "$!";
@@ -52,10 +52,11 @@ sub new {
 	};
 	$self->{timeout} ||= 30;
 	$self->{h} = AnyEvent::Handle->new(
-		fh       => $self->{fh},
-		autocork => 1,
-		on_eof   => $self->{cb}{eof},
-		on_error => $self->{cb}{err},
+		fh        => $self->{fh},
+		autocork  => 1,
+		keepalive => 1,
+		on_eof    => $self->{cb}{eof},
+		on_error  => $self->{cb}{err},
 	);
 	$self;
 }
@@ -95,7 +96,7 @@ sub push_read {
 	my $cb = pop;
 	$self->{h} or return;
 	$self->{h}->timeout($self->{timeout});
-	$self->{h}->push_read(@_,sb {
+	$self->{h}->push_read(@_,sub {
 		shift->timeout(); # disable timeout and remove handle from @_
 		#$self->{h}->timeout();
 		$cb->($self,@_);
@@ -130,7 +131,7 @@ sub recv {
 	$self->{h} or return $args{cb}(undef,"Not connected");
 	warn "<+ read $bytes " if $self->{debug};
 	weaken( $self->{waitingcb}{int $args{cb}} = $args{cb} );
-	$self->{h}->unshift_read( chunk => $bytes, sb {
+	$self->{h}->unshift_read( chunk => $bytes, sub {
 		local *__ANON__ = 'conn.recv.read';
 		# Also eat CRLF or LF from read buffer
 		substr( $self->{h}{rbuf}, 0, 1 ) = '' if substr( $self->{h}{rbuf}, 0, 1 ) eq "\015";
@@ -155,13 +156,10 @@ sub command {
 	#my $i if 0;
 	#my $c = ++$i;
 	warn ">> $write  " if $self->{debug};
-	::measure("command begin");
 	$self->{h}->push_write("$write$self->{nl}");
 	#$self->{h}->timeout( $self->{select_timeout} );
 	warn "<? read  " if $self->{debug};
-	::measure("command written");
-	$self->{h}->push_read( regex => qr<\015?\012>, subname 'conn.command.read' => sb {
-		::measure("command got data");
+	$self->{h}->push_read( regex => qr<\015?\012>, sub { #subname 'conn.command.read' => sub {
 		local *__ANON__ = 'conn.command.read';
 		shift;
 		for (@_) {
@@ -174,7 +172,6 @@ sub command {
 		%args = ();
 		undef $self;
 	} );
-	::measure("command end");
 	#sub {
 		#$self->{state}{handle}->timeout( 0 ) if $self->_qsize < 1;
 		#diag "<< $c. $write: $_[1] (".$self->_qsize."), timeout ".($self->{state}{handle}->timeout ? 'enabled' : 'disabled');
@@ -186,7 +183,7 @@ sub command {
 sub want_command {
 	my $self = shift;
 	$self->{h} or return;
-	$self->{h}->push_read( regex => qr<\015?\012>, subname 'conn.wand_command.read' => sb {
+	$self->{h}->push_read( regex => qr<\015?\012>, sub { #subname 'conn.wand_command.read' => sub {
 		local *__ANON__ = 'conn.want_command.read';
 		shift;
 		for (@_) {

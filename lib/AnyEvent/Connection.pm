@@ -105,7 +105,7 @@ sub connect {
 	$self->{type} = 'client';
 	
 	warn "Connecting to $self->{host}:$self->{port}...";
-	$self->{_}{con}{cb} = subname 'connect.cb' => sb {
+	$self->{_}{con}{cb} = sub { #subname 'connect.cb' => sub {
 		pop;
 		delete $self->{_}{con};
 			if (my $fh = shift) {
@@ -116,7 +116,7 @@ sub connect {
 					debug   => $self->{debug},
 				);
 				$self->{con}->reg_cb(
-					disconnect => sb {
+					disconnect => sub {
 						warn "Disconnected $self->{host}:$self->{port} @_";
 						$self->event( disconnect => @_ );
 						$self->disconnect;
@@ -132,7 +132,7 @@ sub connect {
 				$self->_reconnect_after();
 			}
 	};
-	$self->{_}{con}{pre} = sb { $self->{timeout} };
+	$self->{_}{con}{pre} = sub { $self->{timeout} };
 	$self->{_}{con}{grd} =
 		AnyEvent::Socket::tcp_connect
 			$self->{host}, $self->{port},
@@ -171,7 +171,7 @@ sub _reconnect_after {
 	$self->{reconnect} or return;
 	$self->{timers}{reconnect} = AnyEvent->timer(
 		after => $self->{reconnect},
-		cb => sb {
+		cb => sub {
 			$self or return;
 			delete $self->{timers}{reconnect};
 			#warn "Reconnecting";
@@ -189,7 +189,7 @@ sub periodic {
 	$self->{timers}{int $cb} = AnyEvent->timer(
 		after => $interval,
 		interval => $interval,
-		cb => sb {
+		cb => sub {
 			local *periodic_stop = sub {
 				warn "Stopping periodic ".int $cb;
 				delete $self->{timers}{int $cb}; undef $cb
@@ -212,7 +212,7 @@ sub after {
 	#warn "Create after $interval";
 	$self->{timers}{int $cb} = AnyEvent->timer(
 		after => $interval,
-		cb => sb {
+		cb => sub {
 			$self or return;
 			delete $self->{timers}{int $cb};
 			$cb->();
@@ -234,8 +234,8 @@ sub reconnect {
 
 sub disconnect {
 	my $self = shift;
-	#warn "Disconnecting";
 	#$self->{con} or return;
+	#warn "Disconnecting";
 	ref $self->{con} eq 'HASH' and warn Dump($self->{con});
 	$self->{con} and eval{ $self->{con}->close; };
 	warn if $@;
