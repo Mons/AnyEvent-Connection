@@ -5,6 +5,8 @@ author:
 build_requires:
   ExtUtils::MakeMaker: 6.42
   Test::More: 0
+  Test::NoWarnings: 0
+  lib::abs: 0.90
 configure_requires:
   ExtUtils::MakeMaker: 6.42
 distribution_type: module
@@ -18,6 +20,10 @@ no_index:
   directory:
     - inc
     - t
+provides:
+  AnyEvent::Connection:
+    file: lib/AnyEvent/Connection.pm
+    version: 0.02
 requires:
   Devel::Leak::Cb: 0.03
   common::sense: 2

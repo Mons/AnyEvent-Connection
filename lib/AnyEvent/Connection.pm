@@ -353,13 +353,17 @@ sub reconnect {
 sub disconnect {
 	my $self = shift;
 	#$self->{con} or return;
-	#warn "Disconnecting";
+	#warn "Disconnecting $self->{connected} || $self->{connecting} || $self->{reconnect} by @{[ (caller)[1,2] ]}";
 	ref $self->{con} eq 'HASH' and warn dumper($self->{con});
 	$self->{con} and eval{ $self->{con}->close; };
 	warn if $@;
 	delete $self->{con};
-	$self->{connected} = 0;
-	$self->event('disconnect',@_);
+	my $wascon = $self->{connected} || $self->{connecting};
+	$self->{connected}  = 0;
+	$self->{connecting} = 0;
+	#$self->{reconnect}  = 0;
+	delete $self->{timers}{reconnect};
+	$self->event('disconnect',@_) if $wascon;
 	return;
 }
 

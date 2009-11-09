@@ -15,7 +15,7 @@ use Devel::Leak::Cb;
 sub _call_waiting {
 	my $me = shift;
 	for my $k (keys %{ $me->{waitingcb} }) {
-		warn "call waiting $k with @_";
+		warn "call waiting $k with @_" if $me->{debug};
 		if ($me->{waitingcb}{$k}) {
 			$me->{waitingcb}{$k}->(undef, @_);
 		}

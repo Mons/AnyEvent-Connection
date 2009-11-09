@@ -1,5 +1,8 @@
 Revision history for AnyEvent-Connection
 
-0.01    Date/time
-        First version, released on an unsuspecting world.
+0.02    2009-11-09
+        Fixes, tests
+
+0.01    2009-09-24
+        First version
 

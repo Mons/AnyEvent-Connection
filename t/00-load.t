@@ -1,6 +1,9 @@
-#!perl -T
+#!/usr/bin/env perl
 
-use Test::More tests => 1;
+use common::sense;
+use lib::abs '../lib';
+use Test::More tests => 2;
+use Test::NoWarnings;
 
 BEGIN {
 	use_ok( 'AnyEvent::Connection' );
