@@ -7,6 +7,9 @@ license  'perl';
 
 build_requires 'Test::More';
 
+requires 'Devel::Leak::Cb', '0.03';
+requires 'common::sense', 2;
+
 auto_install;
 
 WriteAll;

@@ -1,79 +1,215 @@
 package AnyEvent::Connection;
 
+use common::sense 2;m{
 use strict;
 use warnings;
+};
 use Object::Event 1.101;
 use base 'Object::Event';
 
-use AnyEvent;
+use AnyEvent 5;
 use AnyEvent::Socket;
 
 use Carp;
 
 use Scalar::Util qw(weaken);
-BEGIN { eval { require Sub::Name; Sub::Name->import(); 1 } or *subname = sub { $_[1] }; }
-BEGIN { eval { require Devel::FindRef; *findref = \&Devel::FindRef::track;   1 } or *findref  = sub { "No Devel::FindRef installed\n" }; }
+use Devel::Leak::Cb;
 use AnyEvent::Connection::Raw;
-use AnyEvent::cb;
-use strict;
-
-use R::Dump;
+use AnyEvent::Connection::Util;
 
 =head1 NAME
 
-AnyEvent::Connection - The great new AnyEvent::Connection!
+AnyEvent::Connection - Base class for tcp connectful clients
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 
 =head1 SYNOPSIS
 
-Quick summary of what the module does.
+    package MyTCPClient;
+    use base 'AnyEvent::Connection';
 
-Perhaps a little code snippet.
-
-    use AnyEvent::Connection;
-
-    my $foo = AnyEvent::Connection->new();
-    ...
-
-=head1 EXPORT
-
-A list of functions that can be exported.  You can delete this section
-if you don't export anything, such as for a purely object-oriented module.
-
-
-=head1 METHODS
-
-=over 4
-
-=item new
-=item connect
-=item disconnect
-=item reconnect
-=item after
-=item periodic
-=item periodic_stop
-
-=back
+    package main;
+    my $client = MyTCPClient->new(
+        host => 'localhost',
+        port => 12345,
+    );
+    $client->reg_cb(
+        connected => sub {
+            my ($client,$connection,$host,$port) = @_;
+            # ...
+            $client->after(
+                $interval, sub {
+                    # Called after interval, if connection still alive
+                }
+            );
+        }
+        connfail = sub {
+            my ($client,$reason) = @_;
+            # ...
+        },
+        disconnect => sub {
+            my ($client,$reason) = @_;
+        },
+        error => sub {
+            my ($client,$error) = @_;
+            # Called in error conditions for callbackless methods
+        },
+    );
+    $client->connect;
 
 =head1 EVENTS
 
 =over 4
 
-=item connected
+=item connected ($connobject, $host, $port)
+
+Called when client get connected.
+
 =item connfail
+
+Called, when client fails to connect
+
 =item disconnect
+
+Called whenever client disconnects
+
+=item error
+
+Called in error conditions for callbackless methods (for ex: when calling push_write on non-connected client)
 
 =back
 
-=item
+=head1 OPTIONS
+
+=over 4
+
+=item host
+
+Host to connect to
+
+=item port
+
+Port to connect to
+
+=item timeout [ = 3 ]
+
+Connect/read/write timeout in seconds
+
+=item reconnect [ = 1 ]
+
+If true, automatically reconnect after disconnect/connfail after delay $reconnect seconds
+
+=item rawcon [ = AnyEvent::Connection::Raw ]
+
+Class that implements low-level connection
+
+=back
+
+=head1 OPERATION METHODS
+
+=over 4
+
+=item new
+
+Cleates connection object (see OPTIONS)
+
+=item connect
+
+Begin connection
+
+=item disconnect ($reason)
+
+Close current connection. reason is optional
+
+=item reconnect
+
+
+Close current connection and establish a new one
+
+=item after($interval, $cb->())
+
+Helper method. AE::timer(after), associated with current connection
+
+Will be destroyed if connection is destroyed, so no timer invocation after connection destruction.
+
+=item periodic($interval, $cb->())
+
+Helper method. AE::timer(periodic), associated with current connection
+
+Will be destroyed if connection is destroyed, so no timer invocation after connection destruction.
+
+=item periodic_stop()
+
+If called within periodic callback, periodic will be stopped.
+
+    my $count;
+    $client->periodic(1,sub {
+        $client->periodic_stop if ++$count > 10;
+    });
+    
+    # callback will be called only 10 times;
+
+=item destroy
+
+Close connection, destroy all associated objects and timers, clean self
+
+=back
+
+=head1 CONNECT METHODS
+
+When connected, there are some methods, that proxied to raw connection or to AE::Handle
+
+
+=over 4
+
+=item push_write
+
+See AE::Handle::push_write
+
+=item push_read
+
+See AE::Handle::push_read
+
+=item unshift_read
+
+See AE::Handle::unshift_read
+
+=item say
+
+Same as push_write + newline
+
+=item reply
+
+Same as push_write + newline
+
+=back
+
+For next methods there is a feature.
+Callback will be called in any way, either by successful processing or by error or object destruction
+
+=over 4
+
+=item recv($bytes, %args, cb => $cb->())
+
+Similar to
+
+    $fh->push_read(chunk => $bytes, $cb->());
+
+=item command($data, %args, cb => $cb->());
+
+Similar to
+
+    $fh->push_write($data);
+    $fh->push_read(line => $cb->());
+
+=back
 
 =cut
 
@@ -87,39 +223,42 @@ sub init {
 	my $self = shift;
 	$self->{debug}   ||= 0;
 	$self->{connected} = 0;
+	$self->{connecting} = 0;
 	$self->{reconnect} = 1 unless defined $self->{reconnect};
 	$self->{timeout} ||= 3;
 	$self->{timers}    = {};
+	$self->{rawcon}  ||= 'AnyEvent::Connection::Raw';
 	#warn "Init $self";
 }
 
-sub connected {
-	warn "Connected";
-	shift->event(connected => ());
-}
+#sub connected {
+#	warn "Connected";
+#	shift->event(connected => ());
+#}
 
 sub connect {
 	my $self = shift;
+	$self->{connecting} and return;
+	$self->{connecting} = 1;
 	weaken $self;
 	croak "Only client can connect but have $self->{type}" if $self->{type} and $self->{type} ne 'client';
 	$self->{type} = 'client';
 	
-	warn "Connecting to $self->{host}:$self->{port}...";
-	$self->{_}{con}{cb} = sub { #subname 'connect.cb' => sub {
+	warn "Connecting to $self->{host}:$self->{port}..." if $self->{debug};
+	$self->{_}{con}{cb} = cb connect {
 		pop;
 		delete $self->{_}{con};
 			if (my $fh = shift) {
-				warn "Connected @_";
-				$self->{con} = AnyEvent::Connection::Raw->new(
+				warn "Connected @_" if $self->{debug};
+				$self->{con} = $self->{rawcon}->new(
 					fh      => $fh,
 					timeout => $self->{timeout},
 					debug   => $self->{debug},
 				);
 				$self->{con}->reg_cb(
 					disconnect => sub {
-						warn "Disconnected $self->{host}:$self->{port} @_";
-						$self->event( disconnect => @_ );
-						$self->disconnect;
+						warn "Disconnected $self->{host}:$self->{port} @_" if $self->{debug};
+						$self->disconnect(@_);
 						$self->_reconnect_after();
 					},
 				);
@@ -127,7 +266,7 @@ sub connect {
 				#warn "Send connected event";
 				$self->event(connected => $self->{con}, @_);
 			} else {
-				warn "Not connected $self->{host}:$self->{port}: $!";
+				warn "Not connected $self->{host}:$self->{port}: $!" if $self->{debug};
 				$self->event(connfail => "$!");
 				$self->_reconnect_after();
 			}
@@ -144,37 +283,16 @@ sub accept {
 	croak "TODO";
 }
 
-sub push_write {
-	my $self = shift;
-	$self->{connected} or return $self->event( error => "Not connected for push_write" );
-	$self->{con}->push_write(@_);
-}
-sub push_read {
-	my $self = shift;
-	$self->{connected} or return $self->event( error => "Not connected for push_read" );
-	$self->{con}->push_read(@_);
-}
-sub unshift_read {
-	my $self = shift;
-	$self->{connected} or return $self->event( error => "Not connected for unshift_read" );
-	$self->{con}->unshift_read(@_);
-}
-
-sub say {
-	my $self = shift;
-	eval{ $self->{con}->say(@_); };
-	return;
-}
 
 sub _reconnect_after {
 	weaken( my $self = shift );
-	$self->{reconnect} or return;
+	$self->{reconnect} or return $self->{connecting} = 0;
 	$self->{timers}{reconnect} = AnyEvent->timer(
 		after => $self->{reconnect},
 		cb => sub {
 			$self or return;
 			delete $self->{timers}{reconnect};
-			#warn "Reconnecting";
+			$self->{connecting} = 0;
 			$self->connect;
 		}
 	);
@@ -236,12 +354,12 @@ sub disconnect {
 	my $self = shift;
 	#$self->{con} or return;
 	#warn "Disconnecting";
-	ref $self->{con} eq 'HASH' and warn Dump($self->{con});
+	ref $self->{con} eq 'HASH' and warn dumper($self->{con});
 	$self->{con} and eval{ $self->{con}->close; };
 	warn if $@;
 	delete $self->{con};
 	$self->{connected} = 0;
-	$self->event('disconnect');
+	$self->event('disconnect',@_);
 	return;
 }
 
@@ -255,9 +373,20 @@ sub destroy {
 
 sub DESTROY {
 	my $self = shift;
-	warn "(".int($self).") Destroying client";
+	warn "(".int($self).") Destroying AE::CNN" if $self->{debug};
 	$self->disconnect;
 	%$self = ();
+}
+
+BEGIN {
+	no strict 'refs';
+	for my $m qw(push_write push_read unshift_read say reply recv command want_command) {
+		*$m = sub {
+			my $self = shift;
+			$self->{connected} or return $self->event( error => "Not connected for $m" );
+			$self->{con}->$m(@_);
+		};
+	}
 }
 
 =head1 AUTHOR

@@ -1,15 +1,16 @@
 package AnyEvent::Connection::Raw;
 
+use common::sense 2;m{
 use strict;
 use warnings;
+};
 use Object::Event 1.101;
 use base 'Object::Event';
 use AnyEvent::Handle;
-use AnyEvent::cb;
+use AnyEvent::Connection::Util;
 use Scalar::Util qw(weaken);
 use Carp;
-BEGIN { eval { require Sub::Name; Sub::Name->import(); 1 } or *subname = sub { $_[1] } }
-BEGIN { eval { require Devel::FindRef; *findref = \&Devel::FindRef::track;   1 } or *findref  = sub { "No Devel::FindRef installed\n" }; }
+use Devel::Leak::Cb;
 
 sub _call_waiting {
 	my $me = shift;
@@ -28,17 +29,17 @@ sub new {
 	$self->{nl} = "\015\012" unless defined $self->{nl};
 	$self->{debug} = 0 unless defined $self->{debug};
 	weaken(my $me = $self);
-	$self->{cb}{eof} = sub {# subname 'conn.cb.eof' => sub {
+	$self->{cb}{eof} = cb 'conn.cb.eof' {
 		$me or return;
-		local *__ANON__ = 'conn.cb.eof';
+		#local *__ANON__ = 'conn.cb.eof';
 		warn "[\U$me->{side}\E] Eof on handle";
 		delete $me->{h};
 		$me->event('disconnect');
 		$me->_call_waiting("EOF from handle");
 	} ;
-	$self->{cb}{err} = sub { #subname 'conn.cb.err' => sub {
+	$self->{cb}{err} = cb 'conn.cb.err' {
 		$me or return;
-		local *__ANON__ = 'conn.cb.err';
+		#local *__ANON__ = 'conn.cb.err';
 		my $e = "$!";
 		if ( $me->{destroying} ) {
 			warn "err on destroy";
@@ -70,8 +71,9 @@ sub destroy {
 sub AnyEvent::Connection::Raw::destroyed::AUTOLOAD {}
 sub DESTROY {
 	my $self = shift;
-	warn "(".int($self).") Destroying conn";
+	warn "(".int($self).") Destroying AE::CNN::Raw" if $self->{debug};
 	delete $self->{fh};
+	$self->_call_waiting("destroying connection");
 	$self->{h} and $self->{h}->destroy;
 	delete $self->{h};
 	%$self = ();
@@ -132,7 +134,7 @@ sub recv {
 	warn "<+ read $bytes " if $self->{debug};
 	weaken( $self->{waitingcb}{int $args{cb}} = $args{cb} );
 	$self->{h}->unshift_read( chunk => $bytes, sub {
-		local *__ANON__ = 'conn.recv.read';
+		#local *__ANON__ = 'conn.recv.read';
 		# Also eat CRLF or LF from read buffer
 		substr( $self->{h}{rbuf}, 0, 1 ) = '' if substr( $self->{h}{rbuf}, 0, 1 ) eq "\015";
 		substr( $self->{h}{rbuf}, 0, 1 ) = '' if substr( $self->{h}{rbuf}, 0, 1 ) eq "\012";
@@ -159,8 +161,8 @@ sub command {
 	$self->{h}->push_write("$write$self->{nl}");
 	#$self->{h}->timeout( $self->{select_timeout} );
 	warn "<? read  " if $self->{debug};
-	$self->{h}->push_read( regex => qr<\015?\012>, sub { #subname 'conn.command.read' => sub {
-		local *__ANON__ = 'conn.command.read';
+	$self->{h}->push_read( regex => qr<\015?\012>, cb 'conn.command.read' {
+		#local *__ANON__ = 'conn.command.read';
 		shift;
 		for (@_) {
 			chomp;
@@ -183,8 +185,8 @@ sub command {
 sub want_command {
 	my $self = shift;
 	$self->{h} or return;
-	$self->{h}->push_read( regex => qr<\015?\012>, sub { #subname 'conn.wand_command.read' => sub {
-		local *__ANON__ = 'conn.want_command.read';
+	$self->{h}->push_read( regex => qr<\015?\012>, cb 'conn.wand_command.read' {
+		#local *__ANON__ = 'conn.want_command.read';
 		shift;
 		for (@_) {
 			chomp;
