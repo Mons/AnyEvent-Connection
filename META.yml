@@ -6,6 +6,7 @@ build_requires:
   ExtUtils::MakeMaker: 6.42
   Test::More: 0
   Test::NoWarnings: 0
+  Test::TCP: 0.14
   lib::abs: 0.90
 configure_requires:
   ExtUtils::MakeMaker: 6.42
@@ -23,7 +24,7 @@ no_index:
 provides:
   AnyEvent::Connection:
     file: lib/AnyEvent/Connection.pm
-    version: 0.03
+    version: 0.04
 requires:
   AnyEvent: 5
   Devel::Leak::Cb: 0.03
@@ -31,4 +32,4 @@ requires:
   common::sense: 2
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.03
+version: 0.04

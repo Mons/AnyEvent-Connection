@@ -2,7 +2,7 @@ NAME
     AnyEvent::Connection - Base class for tcp connectful clients
 
 VERSION
-    Version 0.03
+    Version 0.04
 
 SYNOPSIS
         package MyTCPClient;
@@ -101,7 +101,7 @@ OPERATION METHODS
             $client->periodic_stop if ++$count > 10;
         });
 
-    # callback will be called only 10 times;
+        # callback will be called only 10 times;
 
     destroy
         Close connection, destroy all associated objects and timers, clean

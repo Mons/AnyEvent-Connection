@@ -1,4 +1,5 @@
 .cvsignore
+.portupload.yml
 Changes
 ex/example.pl
 inc/Module/AutoInstall.pm
@@ -23,5 +24,10 @@ META.yml
 README
 t/00-load.t
 t/01-test.t
+t/90-examples.t
+t/96-metayml.t
+t/97-changes.t
+t/98-fixme.t
+t/99-kwalitee.t
 t/pod-coverage.t
 t/pod.t

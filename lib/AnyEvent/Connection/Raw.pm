@@ -45,7 +45,7 @@ sub new {
 			warn "err on destroy";
 			$e = "Connection closed";
 		} else {
-			#warn "[\U$me->{side}\E] Error on handle: $e"; # TODO: uncomment
+			#warn "[\U$me->{side}\E] Error on handle: $e"; # uncomment
 		}
 		delete $me->{h};
 		$self->event( disconnect => "Error: $e" );
