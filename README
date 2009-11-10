@@ -2,7 +2,7 @@ NAME
     AnyEvent::Connection - Base class for tcp connectful clients
 
 VERSION
-    Version 0.02
+    Version 0.03
 
 SYNOPSIS
         package MyTCPClient;

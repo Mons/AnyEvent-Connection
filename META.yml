@@ -23,10 +23,12 @@ no_index:
 provides:
   AnyEvent::Connection:
     file: lib/AnyEvent/Connection.pm
-    version: 0.02
+    version: 0.03
 requires:
+  AnyEvent: 5
   Devel::Leak::Cb: 0.03
+  Object::Event: 1.101
   common::sense: 2
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.02
+version: 0.03
