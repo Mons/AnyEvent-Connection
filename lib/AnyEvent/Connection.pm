@@ -4,7 +4,7 @@ use common::sense 2;m{
 use strict;
 use warnings;
 };
-use Object::Event 1.101;
+use Object::Event 1.21;
 use base 'Object::Event';
 
 use AnyEvent 5;
@@ -27,7 +27,7 @@ Version 0.04
 
 =cut
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 
 =head1 SYNOPSIS
