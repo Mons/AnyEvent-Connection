@@ -13,22 +13,18 @@ use AnyEvent::Socket;
 use Carp;
 
 use Scalar::Util qw(weaken);
-use Devel::Leak::Cb;
 use AnyEvent::Connection::Raw;
 use AnyEvent::Connection::Util;
+# @rewrite s/^# //; # Development hacks, see L<Devel::Rewrite>
+# use Devel::Leak::Cb;
 
 =head1 NAME
 
 AnyEvent::Connection - Base class for tcp connectful clients
 
-=head1 VERSION
-
-Version 0.04
-
 =cut
 
 our $VERSION = '0.05';
-
 
 =head1 SYNOPSIS
 
@@ -245,7 +241,8 @@ sub connect {
 	$self->{type} = 'client';
 	
 	warn "Connecting to $self->{host}:$self->{port}..." if $self->{debug};
-	$self->{_}{con}{cb} = cb connect {
+	# @rewrite s/sub {/cb connect {/;
+	$self->{_}{con}{cb} = sub {
 		pop;
 		delete $self->{_}{con};
 			if (my $fh = shift) {

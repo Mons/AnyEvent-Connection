@@ -1,4 +1,5 @@
-package AnyEvent::Connection::Util;
+package #hide
+	AnyEvent::Connection::Util;
 
 use common::sense 2;m{
 use strict;

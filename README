@@ -1,9 +1,6 @@
 NAME
     AnyEvent::Connection - Base class for tcp connectful clients
 
-VERSION
-    Version 0.04
-
 SYNOPSIS
         package MyTCPClient;
         use base 'AnyEvent::Connection';

@@ -1,5 +1,9 @@
 Revision history for AnyEvent-Connection
 
+0.05    2010-02-18
+        Remove (hide) development dependencies
+        Move author tests to xt/
+
 0.04    2009-11-10
         Fix deps
 

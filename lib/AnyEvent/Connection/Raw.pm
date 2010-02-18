@@ -1,16 +1,18 @@
-package AnyEvent::Connection::Raw;
+package #hide
+	AnyEvent::Connection::Raw;
 
 use common::sense 2;m{
 use strict;
 use warnings;
 };
-use Object::Event 1.101;
+use Object::Event 1.21;
 use base 'Object::Event';
 use AnyEvent::Handle;
 use AnyEvent::Connection::Util;
 use Scalar::Util qw(weaken);
 use Carp;
-use Devel::Leak::Cb;
+# @rewrite s/^# //;
+# use Devel::Leak::Cb;
 
 sub _call_waiting {
 	my $me = shift;
@@ -29,7 +31,8 @@ sub new {
 	$self->{nl} = "\015\012" unless defined $self->{nl};
 	$self->{debug} = 0 unless defined $self->{debug};
 	weaken(my $me = $self);
-	$self->{cb}{eof} = cb 'conn.cb.eof' {
+	# @rewrite s/sub /cb 'conn.cb.eof' /;
+	$self->{cb}{eof} = sub {
 		$me or return;
 		#local *__ANON__ = 'conn.cb.eof';
 		warn "[\U$me->{side}\E] Eof on handle";
@@ -37,9 +40,11 @@ sub new {
 		$me->event('disconnect');
 		$me->_call_waiting("EOF from handle");
 	} ;
-	$self->{cb}{err} = cb 'conn.cb.err' {
+	# @rewrite s/sub /cb 'conn.cb.err' /;
+	$self->{cb}{err} = sub {
 		$me or return;
 		#local *__ANON__ = 'conn.cb.err';
+		#use Carp;Carp::cluck((0+$!).": $!");
 		my $e = "$!";
 		if ( $me->{destroying} ) {
 			warn "err on destroy";
@@ -97,10 +102,9 @@ sub push_read {
 	my $self = shift;
 	my $cb = pop;
 	$self->{h} or return;
-	$self->{h}->timeout($self->{timeout});
+	$self->{h}->timeout($self->{timeout}) if $self->{timeout};
 	$self->{h}->push_read(@_,sub {
-		shift->timeout(); # disable timeout and remove handle from @_
-		#$self->{h}->timeout();
+		shift->timeout(undef); # disable timeout and remove handle from @_
 		$cb->($self,@_);
 		undef $cb;
 	});
@@ -109,7 +113,7 @@ sub push_read {
 sub unshift_read {
 	my $self = shift;
 	$self->{h} or return;
-	$self->{h}->push_read(@_);
+	$self->{h}->unshift_read(@_);
 }
 
 sub say {
@@ -161,7 +165,8 @@ sub command {
 	$self->{h}->push_write("$write$self->{nl}");
 	#$self->{h}->timeout( $self->{select_timeout} );
 	warn "<? read  " if $self->{debug};
-	$self->{h}->push_read( regex => qr<\015?\012>, cb 'conn.command.read' {
+	# @rewrite s/sub {/cb 'conn.command.read' {/;
+	$self->{h}->push_read( regex => qr<\015?\012>, sub {
 		#local *__ANON__ = 'conn.command.read';
 		shift;
 		for (@_) {
@@ -185,7 +190,8 @@ sub command {
 sub want_command {
 	my $self = shift;
 	$self->{h} or return;
-	$self->{h}->push_read( regex => qr<\015?\012>, cb 'conn.wand_command.read' {
+	# @rewrite s/sub {/cb 'conn.wand_command.read' {/;
+	$self->{h}->push_read( regex => qr<\015?\012>, sub {
 		#local *__ANON__ = 'conn.want_command.read';
 		shift;
 		for (@_) {

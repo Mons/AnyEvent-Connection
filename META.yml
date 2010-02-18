@@ -21,15 +21,16 @@ no_index:
   directory:
     - inc
     - t
+    - xt
 provides:
   AnyEvent::Connection:
     file: lib/AnyEvent/Connection.pm
-    version: 0.04
+    version: 0.05
 requires:
   AnyEvent: 5
-  Devel::Leak::Cb: 0.03
-  Object::Event: 1.101
+  Object::Event: 1.21
   common::sense: 2
+  perl: 5.8.8
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.04
+version: 0.05
