@@ -153,20 +153,16 @@ SUPPORT
 
     You can also look for information at:
 
-    *   RT: CPAN's request tracker
-
+    * RT: CPAN's request tracker
         <http://rt.cpan.org/NoAuth/Bugs.html?Dist=AnyEvent-Connection>
 
-    *   AnnoCPAN: Annotated CPAN documentation
-
+    * AnnoCPAN: Annotated CPAN documentation
         <http://annocpan.org/dist/AnyEvent-Connection>
 
-    *   CPAN Ratings
-
+    * CPAN Ratings
         <http://cpanratings.perl.org/d/AnyEvent-Connection>
 
-    *   Search CPAN
-
+    * Search CPAN
         <http://search.cpan.org/dist/AnyEvent-Connection/>
 
 ACKNOWLEDGEMENTS

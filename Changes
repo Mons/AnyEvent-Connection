@@ -1,5 +1,8 @@
 Revision history for AnyEvent-Connection
 
+0.06    2010-11-16
+        Fix syntax for bleadperl (5.13+)
+
 0.05    2010-02-18
         Remove (hide) development dependencies
         Move author tests to xt/

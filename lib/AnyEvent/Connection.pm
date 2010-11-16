@@ -24,7 +24,7 @@ AnyEvent::Connection - Base class for tcp connectful clients
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 =head1 SYNOPSIS
 
@@ -381,7 +381,7 @@ sub DESTROY {
 
 BEGIN {
 	no strict 'refs';
-	for my $m qw(push_write push_read unshift_read say reply recv command want_command) {
+	for my $m (qw(push_write push_read unshift_read say reply recv command want_command)) {
 		*$m = sub {
 			my $self = shift;
 			$self->{connected} or return $self->event( error => "Not connected for $m" );
