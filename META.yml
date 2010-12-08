@@ -26,7 +26,7 @@ no_index:
 provides:
   AnyEvent::Connection:
     file: lib/AnyEvent/Connection.pm
-    version: 0.06
+    version: 0.06_01
 requires:
   AnyEvent: 5
   Object::Event: 1.21
@@ -34,4 +34,4 @@ requires:
   perl: 5.8.8
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.06
+version: 0.06_01

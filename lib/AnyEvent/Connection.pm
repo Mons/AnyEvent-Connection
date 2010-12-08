@@ -24,7 +24,7 @@ AnyEvent::Connection - Base class for tcp connectful clients
 
 =cut
 
-our $VERSION = '0.06';
+our $VERSION = '0.06_01'; $VERSION = eval($VERSION);
 
 =head1 SYNOPSIS
 
@@ -254,7 +254,7 @@ sub connect {
 				);
 				$self->{con}->reg_cb(
 					disconnect => sub {
-						warn "Disconnected $self->{host}:$self->{port} @_" if $self->{debug};
+						warn "Disconnected $self->{host}:$self->{port} @_";# if $self->{debug};
 						$self->disconnect(@_);
 						$self->_reconnect_after();
 					},
@@ -350,12 +350,13 @@ sub reconnect {
 sub disconnect {
 	my $self = shift;
 	#$self->{con} or return;
-	#warn "Disconnecting $self->{connected} || $self->{connecting} || $self->{reconnect} by @{[ (caller)[1,2] ]}";
+	warn "Disconnecting $self->{connected} || $self->{connecting} || $self->{reconnect} by @{[ (caller)[1,2] ]}";
 	ref $self->{con} eq 'HASH' and warn dumper($self->{con});
 	$self->{con} and eval{ $self->{con}->close; };
 	warn if $@;
 	delete $self->{con};
-	my $wascon = $self->{connected} || $self->{connecting};
+	my $wascon = $self->{connected};# || $self->{connecting};
+	warn "disconnect with wascon=$wascon $self->{connected}/$self->{connecting}";
 	$self->{connected}  = 0;
 	$self->{connecting} = 0;
 	#$self->{reconnect}  = 0;
@@ -393,48 +394,6 @@ BEGIN {
 =head1 AUTHOR
 
 Mons Anderson, C<< <mons at cpan.org> >>
-
-=head1 BUGS
-
-Please report any bugs or feature requests to C<bug-anyevent-connection at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=AnyEvent-Connection>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
-
-
-
-
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc AnyEvent::Connection
-
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=AnyEvent-Connection>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/AnyEvent-Connection>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/AnyEvent-Connection>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/AnyEvent-Connection/>
-
-=back
-
-
-=head1 ACKNOWLEDGEMENTS
-
 
 =head1 COPYRIGHT & LICENSE
 

@@ -1,5 +1,8 @@
 Revision history for AnyEvent-Connection
 
+0.06_01 2010-12-03
+        Fix operation on destroyed connection
+
 0.06    2010-11-16
         Fix syntax for bleadperl (5.13+)
 

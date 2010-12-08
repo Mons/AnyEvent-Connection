@@ -33,36 +33,37 @@ sub new {
 	weaken(my $me = $self);
 	# @rewrite s/sub /cb 'conn.cb.eof' /;
 	$self->{cb}{eof} = sub {
-		$me or return;
+		my $this = $me or return warn "No object on EOF";
 		#local *__ANON__ = 'conn.cb.eof';
-		warn "[\U$me->{side}\E] Eof on handle";
-		delete $me->{h};
-		$me->event('disconnect');
-		$me->_call_waiting("EOF from handle");
+		delete $this->{h};
+		$this->event('disconnect' => "Connection closed by remote host");
+		$this->_call_waiting("Connection closed by remote host");
 	} ;
 	# @rewrite s/sub /cb 'conn.cb.err' /;
 	$self->{cb}{err} = sub {
-		$me or return;
+		my $this = $me or return warn "No object on ERR";;
 		#local *__ANON__ = 'conn.cb.err';
 		#use Carp;Carp::cluck((0+$!).": $!");
 		my $e = "$!";
-		if ( $me->{destroying} ) {
+		if ( $this->{destroying} ) {
 			warn "err on destroy";
 			$e = "Connection closed";
 		} else {
 			#warn "[\U$me->{side}\E] Error on handle: $e"; # uncomment
 		}
-		delete $me->{h};
-		$self->event( disconnect => "Error: $e" );
-		$me->_call_waiting($e);
+		delete $this->{h};
+		$this->event( disconnect => "Error: $e" );
+		$this->_call_waiting($e);
 	};
 	$self->{timeout} ||= 30;
+	binmode $self->{fh},':raw';
 	$self->{h} = AnyEvent::Handle->new(
 		fh        => $self->{fh},
 		autocork  => 1,
 		keepalive => 1,
 		on_eof    => $self->{cb}{eof},
 		on_error  => $self->{cb}{err},
+		on_read   => sub {}, # We need on_read watcher for monitoring the state of connection
 	);
 	$self;
 }
@@ -70,10 +71,14 @@ sub new {
 sub destroy {
 	my ($self) = @_;
 	$self->DESTROY;
-	bless $self, "AnyEvent::Connection::Raw::destroyed";
+	#bless $self, "AnyEvent::Connection::Raw::destroyed";
 }
 *close = \&destroy;
-sub AnyEvent::Connection::Raw::destroyed::AUTOLOAD {}
+#sub AnyEvent::Connection::Raw::destroyed::AUTOLOAD {
+#	our $AUTOLOAD;
+#	warn "Call $AUTOLOAD on @_";
+#}
+#sub AnyEvent::Connection::Raw::command { my %args = @_;$args{cb}(undef,"Connection destroyed"); }
 sub DESTROY {
 	my $self = shift;
 	warn "(".int($self).") Destroying AE::CNN::Raw" if $self->{debug};
@@ -88,13 +93,9 @@ sub DESTROY {
 sub push_write {
 	my $self = shift;
 	$self->{h} or return;
-	for (@_) {
-		if (!ref and utf8::is_utf8($_)) {
-			$_ = $_;
-			utf8::encode $_;
-		}
-	}
-	$self->{h}->push_write(@_);
+	my @write = @_;
+	!ref and utf8::is_utf8($_) and utf8::encode ($_) for @write;
+	$self->{h}->push_write(@write);
 	warn ">> @_  " if $self->{debug};
 }
 
@@ -103,8 +104,10 @@ sub push_read {
 	my $cb = pop;
 	$self->{h} or return;
 	$self->{h}->timeout($self->{timeout}) if $self->{timeout};
+	weaken( $self->{waitingcb}{int $cb} = $cb );
 	$self->{h}->push_read(@_,sub {
 		shift->timeout(undef); # disable timeout and remove handle from @_
+		delete $self->{waitingcb}{int $cb};
 		$cb->($self,@_);
 		undef $cb;
 	});
@@ -112,21 +115,25 @@ sub push_read {
 
 sub unshift_read {
 	my $self = shift;
+	my $cb = pop;
 	$self->{h} or return;
-	$self->{h}->unshift_read(@_);
+	$self->{h}->timeout($self->{timeout}) if $self->{timeout};
+	weaken( $self->{waitingcb}{int $cb} = $cb );
+	$self->{h}->unshift_read(@_,sub {
+		shift->timeout(undef); # disable timeout and remove handle from @_
+		delete $self->{waitingcb}{int $cb};
+		$cb->($self,@_);
+		undef $cb;
+	});
 }
 
 sub say {
 	my $self = shift;
 	$self->{h} or return;
-	for (@_) {
-		if (!ref and utf8::is_utf8($_)) {
-			$_ = $_;
-			utf8::encode $_;
-		}
-	}
-	$self->{h}->push_write("@_$self->{nl}");
-	warn ">> @_  " if $self->{debug};
+	my @write = @_;
+	!ref and utf8::is_utf8($_) and utf8::encode ($_) for @write;
+	$self->{h}->push_write("@write$self->{nl}");
+	warn ">> @write\\n  " if $self->{debug};
 	return;
 }
 *reply = \&say;
@@ -151,9 +158,7 @@ sub recv {
 sub command {
 	my $self = shift;
 	my $write = shift;
-	if (utf8::is_utf8($write)) {
-		utf8::encode $write;
-	}
+	utf8::is_utf8($write) and utf8::encode $write;
 	my %args = @_;
 	$args{cb}  or croak "no cb for command at @{[ (caller)[1,2] ]}";
 	$self->{h} or return $args{cb}(undef,"Not connected"),%args = ();
